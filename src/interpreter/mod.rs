@@ -1,12 +1,17 @@
 #![allow(dead_code)]
 
 extern crate byteorder;
+extern crate time;
 
 use std::collections::HashMap;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::io::Cursor;
-use self::byteorder::{BigEndian, ReadBytesExt};
+use self::byteorder::{LittleEndian, ReadBytesExt};
+use self::time::Duration;
+use std::time::Instant;
+
+pub mod default_opcodes;
 
 pub enum Variable {
 	Global(usize),
@@ -82,6 +87,7 @@ pub struct ScriptThread {
 	logical_opcode: RefCell<LogicalOpcode>,
 	stack: RefCell<Vec<u32>>,
 	wake_up: Cell<u32>,
+	instant: RefCell<Instant>,
 }
 
 impl ScriptThread {
@@ -97,6 +103,7 @@ impl ScriptThread {
 			logical_opcode: RefCell::new(LogicalOpcode::One),
 			stack: RefCell::new(Vec::new()),
 			wake_up: Cell::new(0),
+			instant: RefCell::new(Instant::now()),
 		}
 	}
 
@@ -144,7 +151,7 @@ impl ScriptThread {
 			0x01 => {
 				self.offset.set(offset + 5);
 				let mut buffer = Cursor::new(&self.bytes[offset + 1 .. offset + 5]);
-				buffer.read_i32::<BigEndian>().ok()
+				buffer.read_i32::<LittleEndian>().ok()
 			},
 			0x04 => {
 				self.offset.set(offset + 2);
@@ -153,7 +160,7 @@ impl ScriptThread {
 			0x05 => {
 				self.offset.set(offset + 3);
 				let mut buffer = Cursor::new(&self.bytes[offset + 1 .. offset + 3]);
-				Some(buffer.read_i16::<BigEndian>().unwrap() as i32)
+				Some(buffer.read_i16::<LittleEndian>().unwrap() as i32)
 			},
 			_ => None,
 		}
@@ -182,7 +189,7 @@ impl ScriptThread {
 		if offset + 4 < self.bytes.len() && self.bytes[offset] == 0x06 {
 			self.offset.set(offset + 5);
 			let mut buffer = Cursor::new(&self.bytes[offset + 1 .. offset + 5]);
-			buffer.read_f32::<BigEndian>().ok()
+			buffer.read_f32::<LittleEndian>().ok()
 		} else {
 			None
 		}
@@ -200,12 +207,12 @@ impl ScriptThread {
 			0x02 => {
 				self.offset.set(offset + 3);
 				let mut buffer = Cursor::new(&self.bytes[offset + 1 .. offset + 3]);
-				Some(Variable::Global(buffer.read_u16::<BigEndian>().unwrap() as usize))
+				Some(Variable::Global(buffer.read_u16::<LittleEndian>().unwrap() as usize))
 			},
 			0x03 => {
 				self.offset.set(offset + 3);
 				let mut buffer = Cursor::new(&self.bytes[offset + 1 .. offset + 3]);
-				Some(Variable::Local(buffer.read_u16::<BigEndian>().unwrap() as usize))
+				Some(Variable::Local(buffer.read_u16::<LittleEndian>().unwrap() as usize))
 			},
 			_ => None,
 		}
@@ -245,8 +252,21 @@ impl ScriptThread {
 		}
 	}
 
+	pub fn set_wake_up(&self, time: u32) {
+		self.wake_up.set(time);
+		*self.instant.borrow_mut() = Instant::now();
+	}
+
 	pub fn is_active(&self) -> bool {
-		// TODO: checking wake up timer
-		self.active.get()
+		let active = self.active.get();
+
+		if active {
+			match Duration::from_std(self.instant.borrow().elapsed()) {
+				Ok(duration) => duration.num_milliseconds() >= self.wake_up.get() as i64,
+				Err(_) => false,
+			}
+		} else {
+			false
+		}
 	}
 }
