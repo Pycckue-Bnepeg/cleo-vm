@@ -1,0 +1,7 @@
+[package]
+name = "cleo-vm"
+version = "0.1.0"
+authors = ["ZOTTCE <zottce@gmail.com>"]
+
+[dependencies]
+byteorder = "*"
