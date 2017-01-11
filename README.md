@@ -30,7 +30,7 @@ Binding variable (global or local). **Any value except String**.
 Example: `0003: 0@ = 10`
 
 ### Some math opcodes
-Work such as opcode `0003`.
+Work same as opcode `0003`.
 ```
 0004: @var += @any
 0005: @var -= @any
