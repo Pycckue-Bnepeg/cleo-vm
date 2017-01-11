@@ -25,31 +25,44 @@ Example: `0001: wait 10`
 Jump to address.
 Example: `0002: jump @some_label`
 
-### 0006: @var = @int
-Binding variable (global or local). **Only integer**.
-Example: `0006: 0@ = 10`
+### 0003: @var = @any
+Binding variable (global or local). **Any value except String**.
+Example: `0003: 0@ = 10`
 
-### 000A: @var += @int
-Add some value to the variable. **Only integer**.
-Example: `000A: $g_var = 5156`
+### Some math opcodes
+Work such as opcode `0003`.
+```
+0004: @var += @any
+0005: @var -= @any
+0006: @var *= @any
+0007: @var /= @any
+```
 
-### 00D6: if @int
+### 0008: if @int
 Set flags of VM.  
 `@int = 0` - only one opcode must be true (not or). `LogicalOpcode::One`.  
 `@int = 1 .. 7` - same as AND. `LogicalOpcode::And`.  
 `@int = 21 .. 27` - same as OR. `LogicalOpcode::Or`.
 
-### 004D: jump_if_false @int
+### 0009: jump_if_false @int
 Jump to label if a condition is false. Example  
 ```
-006D: if and
+0008: if and
 00AB: some_opcode 10 50
 0AF0: some_opcode 2@
-004D: jump_if_false @condition_false
+0009: jump_if_false @condition_false
 // here is true
 <some code>
 
 :condition_false
 // here is false
 <some code>
+```
+
+### 000A: print @any
+Print in IO any value.
+```
+0003: 10@ = 2.8
+000A: print 10@ // will print "10@ = 2.8"
+000A: print 5.1 // will print "5.1"
 ```
