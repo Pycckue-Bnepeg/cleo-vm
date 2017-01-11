@@ -13,6 +13,8 @@ use std::time::Instant;
 
 pub mod default_opcodes;
 
+type OpcodeHandler = Box<Fn(&ScriptThread) -> bool>;
+
 pub enum Variable {
 	Global(usize),
 	Local(usize),
@@ -35,10 +37,17 @@ pub enum LogicalOpcode {
 pub struct VirtualMachine {
 	global_vars: Rc<RefCell<Vec<i32>>>,
 	scripts: Vec<ScriptThread>,
-	handlers: HashMap<u16, Box<Fn(&ScriptThread) -> bool>>,
+	handlers: HashMap<u16, OpcodeHandler>,
 }
 
 impl VirtualMachine {
+	/// Create new Virtual Machine
+	/// # Examples
+	/// ```
+	/// use interpreter::VirtualMachine;
+	/// 
+	/// let cleo_vm = VirtualMachine::new();
+	/// ```
 	pub fn new() -> VirtualMachine {
 		VirtualMachine {
 			global_vars: Rc::new(RefCell::new(vec![0; 0x10000])),
@@ -47,7 +56,14 @@ impl VirtualMachine {
 		}
 	}
 
-	pub fn set_opcode_handler(&mut self, opcode: u16, handler: Box<Fn(&ScriptThread) -> bool>) {
+	/// Set handler for an opcode.
+	/// # Example
+	/// ```
+	/// vm.set_opcode_handler(0x00FF, Box::new(|thread| {
+	///		unimplemented!();
+	/// }));
+	/// ```
+	pub fn set_opcode_handler(&mut self, opcode: u16, handler: OpcodeHandler) {
 		self.handlers.insert(opcode, handler);
 	}
 
@@ -56,7 +72,7 @@ impl VirtualMachine {
 	}
 
 	pub fn run(&self) {
-		'test: loop {
+		loop {
 			for script in &self.scripts {
 				if !script.is_active() {
 					continue;
@@ -69,7 +85,7 @@ impl VirtualMachine {
 
 						script.set_conditional_result(result);
 					},
-					None => break 'test,
+					None => continue,
 				}
 			}
 		}
@@ -88,9 +104,14 @@ pub struct ScriptThread {
 	stack: RefCell<Vec<u32>>,
 	wake_up: Cell<u32>,
 	instant: RefCell<Instant>,
+	not_flag: Cell<bool>,
 }
 
 impl ScriptThread {
+	/// Create new script thread (use in VirtualMachine) passing to opcode handler.
+	/// 
+	/// `bytes` - CLEO script bytecode
+	/// `vars` - Global variables of Virtual Machine
 	pub fn new(bytes: Vec<u8>, vars: Rc<RefCell<Vec<i32>>>) -> ScriptThread {
 		ScriptThread {
 			bytes: bytes,
@@ -104,9 +125,19 @@ impl ScriptThread {
 			stack: RefCell::new(Vec::new()),
 			wake_up: Cell::new(0),
 			instant: RefCell::new(Instant::now()),
+			not_flag: Cell::new(false),
 		}
 	}
 
+	/// Get current opcode of script
+	///
+	/// # Example 
+	/// ```
+	/// match script.get_opcode() {
+	///		Some(opcode) => handle_opcode(opcode, script),
+	///		None => println!("Current script is done"),
+	/// }
+	/// ```
 	pub fn get_opcode(&self) -> Option<u16> {
 		let offset = self.offset.get();
 
@@ -117,16 +148,24 @@ impl ScriptThread {
 		let opcode: u16 = ((self.bytes[offset + 1] as u16) << 8) + (self.bytes[offset] as u16);
 		self.offset.set(offset + 2);
 
-		Some(opcode)		
+		if opcode & 0x8000 != 0 {
+			self.not_flag.set(true);
+			Some(opcode ^ 0x8000)
+		} else {
+			self.not_flag.set(false);
+			Some(opcode)
+		}	
 	}
 
+	/// Set conditional result of current script. Used in `VirtualMachine` and by opcode 00D6. 
 	pub fn set_conditional_result(&self, result: bool) {
 		let conditional_result = self.condition_result.get();
+		let not_flag = self.not_flag.get();
 
 		match *self.logical_opcode.borrow() {
-			LogicalOpcode::One => self.condition_result.set(result),
-			LogicalOpcode::And => self.condition_result.set(conditional_result & result),
-			LogicalOpcode::Or => self.condition_result.set(conditional_result | result),
+			LogicalOpcode::One => self.condition_result.set(result ^ not_flag),
+			LogicalOpcode::And => self.condition_result.set(conditional_result & (result ^ not_flag)),
+			LogicalOpcode::Or => self.condition_result.set(conditional_result | (result ^ not_flag)),
 		}
 	}
 
@@ -135,6 +174,17 @@ impl ScriptThread {
 		*self.logical_opcode.borrow_mut() = opcode;
 	}
 
+	/// Parse an integer value in arguments of an opcode.
+	/// # Example
+	/// ```
+	/// let vm = VirtualMachine::new();
+	/// vm.set_opcode_handler(0x0AB1, Box::new(|thread| {
+	/// 	match thread.parse_int() {
+	///			Some(value) => do_something(),
+	///			None => false,
+	/// 	}
+	/// }));
+	/// ```
 	pub fn parse_int(&self) -> Option<i32> {
 		let offset = self.offset.get();
 		/*
@@ -230,8 +280,8 @@ impl ScriptThread {
 		}
 	}
 
-	pub fn get_variable(&self, var: Variable) -> i32 {
-		match var {
+	pub fn get_variable(&self, var: &Variable) -> i32 {
+		match *var {
 			Variable::Global(id) => {
 				let global_vars_ptr = self.global_vars.borrow();
 				let global_vars = global_vars_ptr.borrow();
@@ -241,8 +291,8 @@ impl ScriptThread {
 		}
 	}
 
-	pub fn set_variable(&self, var: Variable, value: i32) {
-		match var {
+	pub fn set_variable(&self, var: &Variable, value: i32) {
+		match *var {
 			Variable::Global(id) => {
 				let global_vars_ptr = self.global_vars.borrow();
 				let mut global_vars = (*global_vars_ptr).borrow_mut();
@@ -269,4 +319,8 @@ impl ScriptThread {
 			false
 		}
 	}
+
+	pub fn jump_to(&self, address: usize) {
+		self.offset.set(0xFFFFFFFF - address + 1);
+	} 
 }
