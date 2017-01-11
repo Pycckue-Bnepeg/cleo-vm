@@ -169,9 +169,10 @@ impl ScriptThread {
 		}
 	}
 
-	pub fn set_logical_opcode(&self, opcode: LogicalOpcode) {
+	pub fn set_logical_opcode(&self, opcode: LogicalOpcode) -> bool {
 		self.condition_result.set(true);
 		*self.logical_opcode.borrow_mut() = opcode;
+		true
 	}
 
 	/// Parse an integer value in arguments of an opcode.

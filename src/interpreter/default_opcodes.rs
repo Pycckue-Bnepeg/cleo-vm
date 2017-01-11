@@ -66,29 +66,29 @@ impl DefaultOpcodes for super::VirtualMachine {
 			if let Some(arg) = thread.parse_int() {
 				match arg {
 					0 => thread.set_logical_opcode(LogicalOpcode::One),
-					1 .. 7 => thread.set_logical_opcode(LogicalOpcode::And),
-					21 .. 27 => thread.set_logical_opcode(LogicalOpcode::Or),
+					1 ... 7 => thread.set_logical_opcode(LogicalOpcode::And),
+					21 ... 27 => thread.set_logical_opcode(LogicalOpcode::Or),
+					_ => false,
 				}
-				true
 			} else {
 				false
 			}
 		}));
 
 		// 004D: jump_if_false %int%
-		self.set_opcode_handler(0x004D, Box::new(|thread|) {
+		self.set_opcode_handler(0x004D, Box::new(|thread| {
 			match thread.parse_int() {
 				Some(offset) => {
 					let cond_result = thread.condition_result.get();
 					
 					if !cond_result {
-						thread.jump_to(offset);
+						thread.jump_to(offset as usize);
 					}
 					
 					cond_result
 				},
 				None => false,
 			}
-		});
+		}));
 	}
 }
