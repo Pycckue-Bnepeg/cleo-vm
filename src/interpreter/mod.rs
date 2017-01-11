@@ -10,10 +10,13 @@ use std::io::Cursor;
 use self::byteorder::{LittleEndian, ReadBytesExt};
 use self::time::Duration;
 use std::time::Instant;
+use std::mem::transmute;
+use std::fmt;
 
 pub mod default_opcodes;
+pub mod error;
 
-type OpcodeHandler = Box<Fn(&ScriptThread) -> bool>;
+type OpcodeHandler = Box<Fn(&ScriptThread) -> Result<bool, error::OpcodeHandlerErr>>;
 
 pub enum Variable {
 	Global(usize),
@@ -22,10 +25,10 @@ pub enum Variable {
 
 pub enum ArgType {
 	None,
-	Integer,
-	Float,
-	Variable,
-	String,
+	Integer(i32),
+	Float(f32),
+	Variable(Variable),
+	String(String),
 }
 
 pub enum LogicalOpcode {
@@ -81,9 +84,11 @@ impl VirtualMachine {
 				match script.get_opcode() {
 					Some(opcode) => {
 						let handler = self.handlers.get(&opcode).expect("Opcode doesn't exist!");
-						let result = handler(&script);
-
-						script.set_conditional_result(result);
+						
+						match handler(&script) {
+							Ok(result) => script.set_conditional_result(result),
+							Err(err) => println!("{}", err),
+						}
 					},
 					None => continue,
 				}
@@ -269,15 +274,15 @@ impl ScriptThread {
 		}
 	}
 
-	pub fn get_arg_type(&self) -> ArgType {
+	pub fn get_any_arg(&self) -> Option<ArgType> {
 		let offset = self.offset.get();
 
 		match self.bytes[offset] {
-			0x01 | 0x04 | 0x05 => ArgType::Integer,
-			0x02 | 0x03 => ArgType::Variable,
-			0x06 => ArgType::Float,
-			0x0E => ArgType::String,
-			_ => ArgType::None,
+			0x01 | 0x04 | 0x05 => self.parse_int().and_then(|val| Some(ArgType::Integer(val))),
+			0x02 | 0x03 => self.parse_variable().and_then(|val| Some(ArgType::Variable(val))),
+			0x06 => self.parse_float().and_then(|val| Some(ArgType::Float(val))),
+			0x0E => self.parse_string().and_then(|val| Some(ArgType::String(val))),
+			_ => Some(ArgType::None),
 		}
 	}
 
@@ -303,6 +308,20 @@ impl ScriptThread {
 		}
 	}
 
+	pub fn set_variable_float(&self, var: &Variable, value: f32) {
+		let integer: u32 = unsafe {
+			transmute(value)
+		};
+		
+		self.set_variable(&var, integer as i32);
+	}
+
+	pub fn get_variable_float(&self, var: &Variable) -> f32 {
+		unsafe {
+			transmute(self.get_variable(&var))
+		}
+	}
+
 	pub fn set_wake_up(&self, time: u32) {
 		self.wake_up.set(time);
 		*self.instant.borrow_mut() = Instant::now();
@@ -324,4 +343,21 @@ impl ScriptThread {
 	pub fn jump_to(&self, address: usize) {
 		self.offset.set(0xFFFFFFFF - address + 1);
 	} 
+}
+
+impl fmt::Display for ArgType {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match *self {
+			ArgType::Integer(val) => write!(f, "{}", val),
+			ArgType::Float(val) => write!(f, "{}", val),
+			ArgType::String(ref val) => write!(f, "{}", val),
+			ArgType::Variable(ref val) => {
+				match *val {
+					Variable::Global(id) => write!(f, "${}", id),
+					Variable::Local(id) => write!(f, "{}@", id),
+				}
+			},
+			ArgType::None => write!(f, "None value"),
+		}
+	}
 }
