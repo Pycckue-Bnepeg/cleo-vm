@@ -6,19 +6,21 @@ For example `0002: jump 0xABCD` as bytecode `02 00 05 CD AB`.
 
 CLEO VM has the following types of arguments:
 
-| Type       | ID | Example              | Result     |
-|------------|----|----------------------|------------|
-| Int8       | 04 | 04 EA                | 0xEA       |
-| Int16      | 05 | 05 AB CD             | 0xCDAB     |
-| Int32      | 01 | 01 AB CD EF 00       | 0x00EFCDAB |
-| Float      | 06 | 06 06 5C 8F C2 3F    | 1.52       |
-| Local var  | 03 | 03 0A 00             | 10@        |
-| Global var | 02 | 02 0A 0F             | $3850      |
-| String     | 0E | 0E 05 68 65 6C 6C 6F | "hello"    |
+| Type        | ID | Example              | Result     |
+|-------------|----|----------------------|------------|
+| Int8        | 04 | 04 EA                | 0xEA       |
+| Int16       | 05 | 05 AB CD             | 0xCDAB     |
+| Int32       | 01 | 01 AB CD EF 00       | 0x00EFCDAB |
+| Float       | 06 | 06 5C 8F C2 3F       | 1.52       |
+| Local var   | 03 | 03 0A 00             | 10@        |
+| Global var* | 02 | 02 0A 0F             | $3850      |
+| String      | 0E | 0E 05 68 65 6C 6C 6F | "hello"    |
+
+\* Global variables unimplemented yet.
 
 ## Current Default Opcodes
 ### 0001: wait @int
-Set a wake up timer for a script.
+Set a wake up timer for the script.
 Example: `0001: wait 10`
 
 ### 0002: jump @label
@@ -26,11 +28,11 @@ Jump to address.
 Example: `0002: jump @some_label`
 
 ### 0003: @var = @any
-Binding variable (global or local). **Any value except String**.
+Binding a variable (local).
 Example: `0003: 0@ = 10`
 
 ### Some math opcodes
-Work same as opcode `0003`.
+Work same as opcode `0003`. **Any value except String**
 ```
 0004: @var += @any
 0005: @var -= @any
@@ -65,4 +67,22 @@ Print in IO any value.
 0003: 10@ = 2.8
 000A: print 10@ // will print "10@ = 2.8"
 000A: print 5.1 // will print "5.1"
+```
+
+### 0010: @var == @any
+Using in conditions.
+```
+0008: if
+0010: 10@ > 5
+0009: jump_if_false @less_than_5
+< do something >
+```
+### Some logical opcodes
+**Always return false for strings!** You have to implement custom opcodes or upgrade current.
+```
+0011: @var != @any
+0012: @var > @any
+0013: @var < @any
+0014: @var >= @any
+0015: @var <= @any
 ```

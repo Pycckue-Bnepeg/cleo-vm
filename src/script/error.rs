@@ -1,11 +1,11 @@
-use std::error;
+// use std::error;
 use std::fmt;
 
 #[derive(Debug)]
 pub enum OpcodeHandlerErr {
 	CannotParseArg,
 	UndefinedCondArg,
-	NotCorrectType,
+	NotCorrectType(String),
 }
 
 impl fmt::Display for OpcodeHandlerErr {
@@ -13,7 +13,7 @@ impl fmt::Display for OpcodeHandlerErr {
 		match *self {
 			OpcodeHandlerErr::CannotParseArg => write!(f, "Cannot parse arguments of opcode"),
 			OpcodeHandlerErr::UndefinedCondArg => write!(f, "Undefined an argument of condition"),
-			OpcodeHandlerErr::NotCorrectType => write!(f, "This type is not correct"),
+			OpcodeHandlerErr::NotCorrectType(ref text) => write!(f, "This type is not correct. Expected type is {}", text),
 		}
 	}
 }
